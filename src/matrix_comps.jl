@@ -78,3 +78,24 @@ function mqr(U;p=[])
 		return out;
 	end
 end
+
+
+"""`Proj=findprojector(U)`
+Author: Pilwon Hur, Ph.D.
+
+Input: a matrix U with independent basis column vectors
+Output: returns a projector onto the range space of U
+
+the following is a treatment for the case when U contains dependent vectors
+"""
+function findprojector(U)
+	m,=size(U)
+
+	F=mqr(U);
+	# r=rank(U);
+	# F=qr(U,Val(true));	# get the independent columns and it's permuation number
+	# F=qr(U[:,sort(F.p[1:m])[1:r]])
+	# V=F.Q[:,1:r]
+	V=F.U;
+	return V*inv(V'*V)*V';
+end
