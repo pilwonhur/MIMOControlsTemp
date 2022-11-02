@@ -3,7 +3,7 @@ module MIMOControlsTemp
 greet() = print("Hello World!")
 
 export	#kalmandecomp
-		# findprojector,
+		findprojector,
 		mqr
 		# mmult,
 		# madd,
