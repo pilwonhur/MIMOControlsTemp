@@ -559,3 +559,25 @@ function daug(G1::StateSpace,G2::StateSpace)
 	D=[G1.D zeros(m1,r2);zeros(m2,r1) G2.D];
 	return ss(A,B,C,D)
 end
+
+"""`I=eye(n)`
+Author: Pilwon Hur, Ph.D.
+
+returns nxn identity matrix
+"""
+function eye(n)
+	# Author: Pilwon Hur, Ph.D.
+	#
+	return Matrix{Float64}(I, n, n)
+end
+
+"""`I=eyec(n)`
+Author: Pilwon Hur, Ph.D.
+
+returns nxn complex identity matrix
+"""
+function eyec(n)
+	# Author: Pilwon Hur, Ph.D.
+	#
+	return Matrix{Complex{Float64}}(I, n, n)
+end

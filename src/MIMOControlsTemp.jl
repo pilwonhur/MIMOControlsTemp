@@ -16,9 +16,9 @@ export	kalmandecomp,
 		mscl,
 		sbs,
 		abv,
-		daug
-		# eye,
-		# eyec,
+		daug,
+		eye,
+		eyec
 		# hinflmi,
 		# hinfbis,
 		# h2lmi,
