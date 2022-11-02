@@ -269,3 +269,15 @@ function kalmandecomp(A,B,C,D)
 
 	return out
 end
+
+function kalmandecomp(G::StateSpace)
+	# Author: Pilwon Hur, Ph.D.
+	#
+	return kalmandecomp(G.A,G.B,G.C,G.D)
+end
+
+function kalmandecomp(G::TransferFunction)
+	# Author: Pilwon Hur, Ph.D.
+	#
+	return kalmandecomp(ss(G))
+end
