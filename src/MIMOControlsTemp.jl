@@ -4,7 +4,8 @@ greet() = print("Hello World!")
 
 export	kalmandecomp,
 		findprojector,
-		mqr
+		mqr,
+		minimumreal
 		# mmult,
 		# madd,
 		# msub,
@@ -16,7 +17,6 @@ export	kalmandecomp,
 		# sbs,
 		# abv,
 		# daug,
-		# minimumreal,
 		# eye,
 		# eyec,
 		# hinflmi,

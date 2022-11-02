@@ -281,3 +281,43 @@ function kalmandecomp(G::TransferFunction)
 	#
 	return kalmandecomp(ss(G))
 end
+
+
+
+"""`Gs=minimumreal(G::StateSpace)`
+	`Gs=minimumreal(G::TransferFunction)`
+	`Gs=minimumreal(A,B,C,D)`
+
+Author: Pilwon Hur, Ph.D.
+
+Returns the Kalman decomposition.
+`Gs`: minimum state space realization of the given system.
+"""
+function minimumreal(G::StateSpace)
+	# Author: Pilwon Hur, Ph.D.
+	#
+
+	T=kalmandecomp(G);
+	n,=reverse(size(T.t1));
+	At=T.T\G.A*T.T;
+	Bt=T.T\G.B;
+	Ct=G.C*T.T;
+	Dt=G.D;
+	A1=At[1:n,1:n];
+	B1=Bt[1:n,:];
+	C1=Ct[:,1:n];
+	D1=Dt;
+	return ss(A1,B1,C1,D1)
+end
+
+function minimumreal(G::TransferFunction)
+	# Author: Pilwon Hur, Ph.D.
+	#
+	return minimumreal(ss(G))
+end
+
+function minimumreal(A,B,C,D)
+	# Author: Pilwon Hur, Ph.D.
+	#
+	return minimumreal(ss(A,B,C,D))
+end
