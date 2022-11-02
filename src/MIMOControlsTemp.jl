@@ -2,7 +2,7 @@ module MIMOControlsTemp
 
 greet() = print("Hello World!")
 
-export	#kalmandecomp
+export	kalmandecomp,
 		findprojector,
 		mqr
 		# mmult,
@@ -37,7 +37,7 @@ export	#kalmandecomp
 #     Pkg.add(item)
 # end
 
-using LinearAlgebra # JuMP, ProxSDP, ControlSystems
+using LinearAlgebra, ControlSystems # JuMP, ProxSDP
 # # using SCS, Convex
 
 include("matrix_comps.jl")
