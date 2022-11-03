@@ -18,18 +18,19 @@ export	kalmandecomp,
 		abv,
 		daug,
 		eye,
-		eyec
+		eyec,
+		splitSS,
+		complex2real,
+		LQRlmi,
+		h2syn,
+		hinfsyn,
+		lft,
+		are
 		# hinflmi,
 		# hinfbis,
 		# h2lmi,
 		# h2gram,
-		# splitSS,
-		# complex2real,
-		# LQRlmi,
-		# h2syn,
-		# hinfsyn,
-		# lft,
-		# are
+		
 
 # using Pkg
 # l = ["ControlSystems","LinearAlgebra","JuMP","ProxSDP"]

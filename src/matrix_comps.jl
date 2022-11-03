@@ -13,12 +13,17 @@ mutable struct KALMANDECOMP
 	t4::Any
 end
 
+mutable struct SPLITSS 
+	Gs::Any
+	Gu::Any
+	Gc::Any
+end
 
-
-
-
-
-
+mutable struct COMPLEX2REAL
+	T::Any	# transform matrix: A=V*D*Vinv=V*(T*Tinv)*D*(T*Tinv)*Vinv=(V*T)*(Tinv*D*T)*(V*T)inv
+	D::Any	# block diagonal matrix
+	V::Any	# matrix of eigenvectors
+end
 
 """`out=mqr(U;p=[])`
 
@@ -581,3 +586,226 @@ function eyec(n)
 	#
 	return Matrix{Complex{Float64}}(I, n, n)
 end
+
+
+
+
+function lft(G1::StateSpace,G2::StateSpace)
+	# if lower lft
+	G2s=minimumreal(G2);
+	nu,ny=size(G2s.D);
+	G1s=minimumreal(G1);
+	A=G1s.A;
+	B=G1s.B;
+	C=G1s.C;
+	D=G1s.D;
+
+	nstate=size(A,1);
+	nin=size(B,2);
+	nout=size(C,1);
+	nw=nin-nu;
+	nz=nout-ny;
+
+	B1=reshape(B[:,1:nw],(nstate,nw));
+	B2=reshape(B[:,nw+1:nin],(nstate,nu));
+	C1=reshape(C[1:nz,:],(nz,nstate));
+	C2=reshape(C[nz+1:nout,:],(ny,nstate));
+	D11=reshape(D[1:nz,1:nw],(nz,nw));
+	D12=reshape(D[1:nz,nw+1:nin],(nz,nu));
+	D21=reshape(D[nz+1:nout,1:nw],(ny,nw));
+	D22=reshape(D[nz+1:nout,nw+1:nin],(ny,nu));
+
+	Ak=G2s.A;
+	Bk=G2s.B;
+	Ck=G2s.C;
+	Dk=G2s.D;
+
+	E=inv(I-D22*Dk);
+	F=inv(I-Dk*D22);
+
+	TzwA=[A+B2*F*Dk*C2 B2*F*Ck;
+			Bk*E*C2 Ak+Bk*E*D22*Ck];
+	TzwB=[B1+B2*F*Dk*D21;
+			Bk*E*D21];
+	TzwC=[C1+D12*F*Dk*C2 D12*F*Ck];
+	TzwD=D11+D12*F*Dk*D21;
+
+	Tzw=minimumreal(TzwA,TzwB,TzwC,TzwD);
+	return Tzw
+end
+
+
+"""'X = ARE(A, R, Q) returns the stablizing solution (if it
+    exists) to the continuous-time Riccati equation:
+
+           A'*X + X*A - X*R*X + Q = 0
+
+    assuming R is symmetric and nonnegative definite and Q is
+    symmetric.
+"""
+function are(A,R,Q)
+	# check the size of A matrix
+	nstate,nc=size(A);
+	if nstate!=nc
+		error("Matrix A should be a square matrix.")
+	end
+
+	# check the size of Q matrix
+	n,m=size(Q);
+	if nstate!=n || nstate!=m
+		error("Dimension of Matrix Q is not correct.")
+	end
+
+	# check the size of R matrix
+	n,m=size(R);
+	if nstate!=n || nstate!=m
+		error("Dimension of Matrix R is not correct.")
+	end
+
+	# Hamiltonian matrix
+	H=[A -R;-Q -A'];
+
+	F=eigen(H);
+	tol=1e-10;
+	perm=Int64[];
+	for i=1:2*nstate
+        if abs(real(F.values[i]))<tol
+           	error("No solution: Hamiltonian matrix has eigenvalues on the imaginary axis.");
+           	break;
+       	end
+       	if real(F.values[i])<-tol
+       		push!(perm,i);
+       	end
+	end
+
+	X1=F.vectors[1:n,perm];
+	X2=F.vectors[n+1:2*n,perm];
+
+	# check if X1 is invertible
+	L,U=lu(X1);
+	if abs(prod(diag(U))) < tol
+		error("No solution: Hamiltonian matrix is not complementary.");
+	end
+
+	X=X2/X1;
+	return real(X);
+end
+
+
+function h2gram(G::TransferFunction)
+	return h2gram(ss(G))
+end
+
+"""`Gs=hinfbis(G::StateSpace)`
+	`Gs=hinfbis(G::TransferFunction)`
+Author: Pilwon Hur, Ph.D.
+
+returns hinf norm of the given system using Hamiltonian matrix and bisection
+`G`: state space model of `G`
+"""
+function hinfbis(G::StateSpace,rl,ru)
+	r=(ru+rl)/2
+	rprev=0;
+	A=G.A;
+	B=G.B;
+	C=G.C;
+	D=G.D;
+
+	while abs(r-rprev)>0.0001
+    	rprev=r;
+    	R=r^2*I-D'*D;
+    	H=[A+B*inv(R)*D'*C B*inv(R)*B';
+            -C'*(I+D*inv(R)*D')*C -(A+B*inv(R)*D'*C)'];
+    	lambda=eigvals(H);
+    	rutemp=ru;
+    	for i=1:length(lambda)
+        	if abs(real(lambda[i]))<0.0000001
+            	rl=r;
+            	ru=rutemp;
+            	break;
+        	end
+        	ru=r;
+    	end
+    	r=(ru+rl)/2
+	end
+	return r
+end
+
+function hinfbis(G::TransferFunction,rl,ru)
+	return hinfbis(ss(G),rl,ru)
+end
+
+
+
+function complex2real(A)
+	# Convert complex eigendecomposition of real matrix
+	# into eigen-like decomposition with real block matrices
+	d,v=eigen(A);
+	n=length(d);
+	if !isreal(d)
+		T=eyec(n);
+		for i=1:n
+			if !isreal(d[i]) && i<n
+				if norm(d[i]-conj(d[i+1]))<eps()*1000
+					T[i,i]=T[i+1,i]=0.5;
+					T[i,i+1]=-0.5im;
+					T[i+1,i+1]=0.5im;
+				end
+			end
+		end
+
+		# A=V*D*Vinv=V*(T*Tinv)*D*(T*Tinv)*Vinv=(V*T)*(Tinv*D*T)*(V*T)inv
+		D=real(inv(T)*diagm(0=>d)*T);
+		V=real(v*T);
+	else
+		T=eye(n);
+	end
+
+	out=COMPLEX2REAL(T,D,V);
+
+	return out;
+end
+
+function splitSS(G::StateSpace)
+	Gmin=minimumreal(G);
+	d,v=eigen(Gmin.A);
+	dreal=real(d);
+	# p=sortperm(dreal);
+	ps=(1:length(dreal))[dreal.<0];
+	pu=(1:length(dreal))[dreal.>0];
+	pc=(1:length(dreal))[dreal.==0];
+
+	if isreal(d)	
+		Anew=diagm(0=>d);
+		Bnew=inv(v)*Gmin.B;
+		Cnew=Gmin.C*v;
+		Dnew=Gmin.D;		
+	else 	# if complex
+		T=complex2real(Gmin.A)
+
+		Anew=T.D;
+		Bnew=inv(T.V)*Gmin.B;
+		Cnew=Gmin.C*T.V;
+		Dnew=Gmin.D;		
+	end 
+
+	Gs=ss(Anew[ps,ps],Bnew[ps,:],Cnew[:,ps],zeros(size(Dnew)));
+	Gu=ss(Anew[pu,pu],Bnew[pu,:],Cnew[:,pu],zeros(size(Dnew)));
+	Gc=ss(Anew[pc,pc],Bnew[pc,:],Cnew[:,pc],Dnew);
+
+	out=SPLITSS(Gs,Gu,Gc);
+	return out;
+end
+
+function splitSS(G::TransferFunction)
+	return splitSS(ss(G))
+end
+
+# function ss(G::TransferFunction,opt)
+# 	if opt == "minimal"
+# 		return minimumreal(G);
+# 	else
+# 		error("Your option should be \"minimal\".")
+# 	end
+# end
+
