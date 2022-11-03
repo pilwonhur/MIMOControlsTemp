@@ -809,3 +809,315 @@ end
 # 	end
 # end
 
+
+
+"""`Gs=hinflmi(G::StateSpace)`
+	`Gs=hinflmi(G::TransferFunction)`
+Author: Pilwon Hur, Ph.D.
+
+returns hinf norm of the given system
+`G`: state space model of `G`
+"""
+function LQRlmi(G,Q::Array{Float64,2},R::Float64)
+    n2,=reverse(size(Q));
+    solver=SCSSolver(eps=1e-6,max_iters=100000,verbose=0)
+    m = Model(solver=solver)
+    
+    if isa(G,Array{StateSpace{Float64,Array{Float64,2}},1})
+        T = 2
+        n1,=size(G[1].A);
+        @variable(m,P[1:n1,1:n1],SDP)
+        @objective(m,Min,-tr(P))
+        
+        for sys in G
+            @constraint(m,[(P*sys.A'+sys.A*P-sys.B*(R^-1)*sys.B') P;  # SDconstraint -> constraint
+                        P -inv(Q)]<=zeros((n1+n2),(n1+n2)))
+        end
+        
+    elseif isa(G,StateSpace{Float64,Array{Float64,2}})
+        T = 1
+        n1,=size(G.A);
+        @variable(m,P[1:n1,1:n1],SDP)
+        @objective(m,Min,-tr(P))
+        @constraint(m,[(P*G.A'+G.A*P-G.B*(R^-1)*G.B') P; 	# SDconstraint -> constraint
+                        P -inv(Q)]<=zeros((n1+n2),(n1+n2)))
+    else
+        print("Not in State Space or State Space list")
+        return false
+    end
+    
+    
+    
+    JuMP.solve(m)
+    
+    if T==2
+        K = Array{Float64}[]
+        for sys in G
+            push!(K,(R^1)*sys.B'*inv(getvalue(P)))
+        end
+    else
+        K = (R^1)*G.B'*inv(getvalue(P))
+    end
+    
+    # returns P matrix and Gain
+    return inv(getvalue(P)), K
+end
+
+function hinflmi(G::StateSpace)
+	# Author: Pilwon Hur, Ph.D.
+	# 
+	# Accepts the G, state space model
+	# returns gamma and P using LMI
+
+	A=G.A;
+	B=G.B;
+	C=G.C;
+	D=G.D;
+	n1,=size(A);
+	n2,=reverse(size(B));
+
+	# JuMP old version 0.18
+	# model=Model(solver=SCSSolver(eps=1e-6,max_iters=100000,verbose=0))
+	# @variable(model,g2>=0)
+	# @variable(model,X[1:n1,1:n1],SDP) 	# symmetric positive semidefinite
+	# @objective(model,Min,g2)
+	# @SDconstraint(model,[A'*X+X*A+C'*C X*B+C'*D;(X*B+C'*D)' D'*D-g2.*eye(n2)]<=eps()*eye(n1+n2))
+	# JuMP.solve(model)
+	# return sqrt(getvalue(g2)), getvalue(X)
+
+	# version 0.19 # In JuMP v0.19, SCS Solver does not seem to provide 
+	# correct solution. So, Try to either downgrade JuMP to 0.18.5 or 
+	# use different SDP solver. In this case, I used JuMP 0.19 and ProxSDP Solver.
+	# https://github.com/mariohsouto/ProxSDP.jl
+    m = Model(with_optimizer(ProxSDP.Optimizer,max_iters=100000,verbose=1))
+    @variable(m,g2>=0)
+    @variable(m,X[1:n1,1:n1],PSD)
+    @objective(m,Min,g2)
+    @constraint(m,[A'*X+X*A+C'*C X*B+C'*D;(X*B+C'*D)' D'*D-g2.*eye(n2)]<=zeros(n1+n2,n1+n2))	# SDconstraint -> constraint
+    JuMP.optimize!(m)
+    return sqrt(JuMP.objective_value(m)), JuMP.value.(X)
+
+
+	# Convex version
+	# solver=SCSSolver(eps=1e-6,max_iters=100000,verbose=1)
+	# g2=Variable(Positive())
+	# X=Semidefinite(n1)
+	# p=minimize(g2)
+	# p.constraints+=(X in :SDP)
+	# p.constraints+=(-1*[A'*X+X*A+C'*C X*B+C'*D;(X*B+C'*D)' D'*D-g2*eye(n2)] in :SDP)
+	# solve!(p, solver)
+	# return sqrt(p.optval), X.value
+end
+
+function hinflmi(G::TransferFunction)
+	return hinflmi(ss(G))
+end
+
+"""`Gs=h2lmi(G::StateSpace)`
+	`Gs=h2lmi(G::TransferFunction)`
+Author: Pilwon Hur, Ph.D.
+
+returns h2 norm of the given system
+`G`: state space model of `G`
+"""
+function h2lmi(G::StateSpace)
+	# Author: Pilwon Hur, Ph.D.
+	# 
+	# Accepts the G, state space model
+	# returns gamma and P using LMI
+	# http://www.juliaopt.org/JuMP.jl/stable/refmodel.html
+	
+	A=G.A;
+	B=G.B;
+	C=G.C;
+	D=G.D;
+	n,=size(A);
+
+	# JuMP version
+
+	# old version	0.18
+	# solver=SCSSolver(eps=1e-6,max_iters=100000,verbose=1)
+	# m=Model(solver=solver)
+	# @variable(m,X[1:n,1:n],SDP) 	# symmetric positive semidefinite
+	# @objective(m,Min,tr(B'*X*B))
+	# @SDconstraint(m,A*X+X*A'+C'*C<=eps()*eye(n))
+	# JuMP.solve(m)
+	# return sqrt(getobjectivevalue(m)), getvalue(X)
+
+	# version 0.19 # In JuMP v0.19, SCS Solver does not seem to provide 
+	# correct solution. So, Try to either downgrade JuMP to 0.18.5 or 
+	# use different SDP solver. In this case, I used JuMP 0.19 and ProxSDP Solver.
+	# https://github.com/mariohsouto/ProxSDP.jl
+    # m = Model(with_optimizer(ProxSDP.Optimizer,eps=1e-6,max_iters=100000,verbose=1))
+    m = Model(ProxSDP.Optimizer)
+    set_optimizer_attribute(m,"max_iter",50000)
+	set_optimizer_attribute(m,"print_level",5)
+
+    @variable(m,X[1:n,1:n],PSD)
+    @objective(m,Min,tr(B'*X*B))
+    @constraint(m,A'*X+X*A+C'*C<=-eps()*eye(n))	# SDconstraint -> constraint
+    JuMP.optimize!(m)
+    return sqrt(JuMP.objective_value(m)), JuMP.value.(X)
+
+    # Convex version
+    # https://github.com/JuliaOpt/Convex.jl
+    # https://convexjl.readthedocs.io/en/latest/solvers.html
+
+ 	# solver=SCSSolver(eps=1e-6,max_iters=100000,verbose=1)
+	# X=Semidefinite(n) # X=Variable(n,n)
+	# p=minimize(tr(B'*X*B))
+	# # p.constraints+=A'*X+X*A+C'*C<zeros(n,n)  # this is wrong. see below.
+	# p.constraints+=(-(A'*X+X*A+C'*C)< in :SDP) # or p.constraints+=(A'*X+X*A+C'*C < 0) # Convex is using different syntax from JuMP
+	# solve!(p, solver)
+	# return sqrt(p.optval), X.value
+end
+
+function h2lmi(G::TransferFunction)
+	return h2lmi(ss(G))
+end
+
+"""`Gs=h2gram(G::StateSpace)`
+	`Gs=h2gram(G::TransferFunction)`
+Author: Pilwon Hur, Ph.D.
+
+returns h2 norm of the given system using Gramian
+`G`: state space model of `G`
+"""
+function h2gram(G::StateSpace)
+	# Author: Pilwon Hur, Ph.D.
+	# 
+	# Accepts the G, state space model
+	# returns gamma and P using LMI
+	# http://www.juliaopt.org/JuMP.jl/stable/refmodel.html
+	
+	Wo=gram(G,:o);
+	# return sqrt(getobjectivevalue(m)), getvalue(X)
+	return sqrt(tr(G.B'*Wo*G.B))
+end
+
+
+
+"""`K2,Tzw=h2syn(G::StateSpace)`
+	`K2,Tzw=h2gram(G::TransferFunction)`
+Author: Pilwon Hur, Ph.D.
+
+returns h2 controller of the given system G and its LFT
+`G`: state space model of `G`
+"""
+function h2syn(G::StateSpace,ny,nu)
+	# Author: Pilwon Hur, Ph.D.
+	# 
+	# Accepts the G, state space model
+	# Accepts the G, state space model
+	# returns hinf controller of the given system G and its LFT
+	
+	A=G.A;
+	B=G.B;
+	C=G.C;
+	D=G.D;
+	nstate=size(A,1);
+	nin=size(B,2);
+	nout=size(C,1);
+	nw=nin-nu;
+	nz=nout-ny;
+
+	B1=reshape(B[:,1:nw],(nstate,nw));
+	B2=reshape(B[:,nw+1:nin],(nstate,nu));
+	C1=reshape(C[1:nz,:],(nz,nstate));
+	C2=reshape(C[nz+1:nout,:],(ny,nstate));
+	D11=reshape(D[1:nz,1:nw],(nz,nw));
+	D12=reshape(D[1:nz,nw+1:nin],(nz,nu));
+	D21=reshape(D[nz+1:nout,1:nw],(ny,nw));
+	D22=reshape(D[nz+1:nout,nw+1:nin],(ny,nu));
+
+	# controller design
+	Ruu=D12'*D12;
+	Ac=A-B2*inv(Ruu)*D12'*C1;
+	Qc=C1'*(I-D12*inv(Ruu)*D12')*C1;
+	X2=are(Ac,B2*inv(Ruu)*B2',Qc);
+	F=-inv(Ruu)*(B2'*X2+D12'*C1);
+
+	# observer design
+	 Rww=D21*D21';
+	Ao=A-B1*D21'*inv(Rww)*C2;
+	Qo=B1*(I-D21'*inv(Rww)*D21)*B1'
+	Y2=are(Ao',C2'*inv(Rww)*C2,Qo)
+	L=-(Y2*C2'+B1*D21')*inv(Rww)
+
+	# construct the H2 controller
+	Ak=A+B2*F+L*C2;
+	Bk=-L;
+	Ck=F;
+	Dk=zeros(size(Ck,1),size(Bk,2));
+	K2=minimumreal(Ak,Bk,Ck,Dk);
+
+	Tzw=lft(G,K2);
+
+	return K2,Tzw
+end
+
+
+"""`Kinf,Tzw=hinfsyn(G::StateSpace,r,ny,nu)`
+	`Kinf,Tzw=hinfsyn(G::TransferFunction,r,ny,nu)`
+Author: Pilwon Hur, Ph.D.
+
+returns hinf controller of the given system G and its LFT
+`G`: state space model of `G`
+"""
+function hinfsyn(G::StateSpace,r,ny,nu)
+	# Author: Pilwon Hur, Ph.D.
+	# 
+	# Accepts the G, state space model
+	# returns hinf controller of the given system G and its LFT
+	
+	A=G.A;
+	B=G.B;
+	C=G.C;
+	D=G.D;
+	nstate=size(A,1);
+	nin=size(B,2);
+	nout=size(C,1);
+	nw=nin-nu;
+	nz=nout-ny;
+
+	B1=reshape(B[:,1:nw],(nstate,nw));
+	B2=reshape(B[:,nw+1:nin],(nstate,nu));
+	C1=reshape(C[1:nz,:],(nz,nstate));
+	C2=reshape(C[nz+1:nout,:],(ny,nstate));
+	D11=reshape(D[1:nz,1:nw],(nz,nw));
+	D12=reshape(D[1:nz,nw+1:nin],(nz,nu));
+	D21=reshape(D[nz+1:nout,1:nw],(ny,nw));
+	D22=reshape(D[nz+1:nout,nw+1:nin],(ny,nu));
+
+	# controller design
+	R1=D12'*D12;
+	Ac=A-B2*inv(R1)*D12'*C1;
+	Qc=C1'*(I-D12*inv(R1)*D12')'*(I-D12*inv(R1)*D12')*C1;
+	R=B1*B1'/r^2-B2*inv(R1)*B2';
+	
+	Xinf=are(Ac,-R,Qc);
+	F2=-inv(R1)*(B2'*Xinf+D12'*C1);
+	
+	# observer design
+	R2=D21*D21';
+	Ao=A-B1*D21'*inv(R2)*C2;
+	Qo=B1*(I-D21'*inv(R2)*D21)*(I-D21'*inv(R2)*D21)'*B1';
+	R=C1'*C1/r^2-C2'*inv(R2)*C2;
+	Yinf=are(Ao',-R,Qo);
+	Linf=-inv(I-1/r^2*Yinf*Xinf)*(Yinf*C2'+B1*D21')*inv(R2);
+
+	F1=1/r^2 *(B1*B1'+Linf*D21*B1')*Xinf;
+
+	
+
+	# construct the Hinf controller
+	Ak=A+B2*F2+Linf*C2+F1;
+	Bk=-Linf;
+	Ck=F2;
+	Dk=zeros(size(Ck,1),size(Bk,2));
+	Kinf=minimumreal(Ak,Bk,Ck,Dk);
+
+	Tzw=lft(G,Kinf);
+
+	return Kinf,Tzw
+end

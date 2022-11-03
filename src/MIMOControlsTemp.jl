@@ -22,14 +22,14 @@ export	kalmandecomp,
 		splitSS,
 		complex2real,
 		lft,
-		are
-		# LQRlmi,
-		# h2syn,
-		# hinfsyn,
-		# hinflmi,
-		# hinfbis,
-		# h2lmi,
-		# h2gram,
+		are,
+		LQRlmi,
+		h2syn,
+		hinfsyn,
+		hinflmi,
+		hinfbis,
+		h2lmi,
+		h2gram
 		
 
 # using Pkg
@@ -38,7 +38,7 @@ export	kalmandecomp,
 #     Pkg.add(item)
 # end
 
-using LinearAlgebra, ControlSystems # JuMP, ProxSDP
+using LinearAlgebra, ControlSystems, JuMP, ProxSDP
 # # using SCS, Convex
 
 include("matrix_comps.jl")
